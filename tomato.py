@@ -8,12 +8,13 @@ Email: gang868@gmail.com
 Description: Tomato alarm clock
 Version: 1.1
 '''
+import time
 from enum import Enum
 
 from PyQt5 import QtCore
 from PyQt5.QtNetwork import QLocalSocket, QLocalServer
 from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QLCDNumber, QSystemTrayIcon, QMenu, QAction
-from PyQt5.QtCore import QTimer, Qt
+from PyQt5.QtCore import QTimer, Qt, pyqtSignal
 from PyQt5.QtGui import QPalette, QFont, QIcon, QPixmap
 import sys, playsound, os
 # from qfluentwidgets import (CommandBar, Action)
@@ -32,6 +33,8 @@ WORK_DURATION = 25
 
 
 class Tomato(QWidget):
+    clearDirtyTopHintSignal: pyqtSignal = pyqtSignal()
+
     def __init__(self, app:QApplication):
         super().__init__()
         self.app = app
@@ -43,6 +46,7 @@ class Tomato(QWidget):
         self.current_status = "Work"
         # 是否"置顶"
         self.is_top_hint = False
+        self.clearDirtyTopHintSignal.connect(self.clearDirtyTopHint)
         self.initUI()
 
     def initUI(self):
@@ -139,8 +143,43 @@ class Tomato(QWidget):
 
         self.tray.show()
         self.show()
+        # 托盘图标双击显示窗口
+        self.tray.activated[QSystemTrayIcon.ActivationReason].connect(self.trayIconActivated)
 
-    # def createCommandBar(self):
+    def trayIconActivated(self, event):
+        """
+        1) 最小化状态, 先要取消最小化
+        2) 激活窗口上移, 貌似不好使, 故增加置顶flag, 但为了保持状态一致性, emit 事件异步取消这个 flag
+        :param event:
+        """
+        if event == QSystemTrayIcon.DoubleClick:
+            self.activateWindow()
+            # setWindowState()：根据Flags值设置窗口的状态,多个 WindowFlags之间用 | 连接
+            # windowState()正常状态， WindowMinimized最小化， WindowActive活动状态
+            if self.isMinimized():
+                print("isMinimized")
+                self.setWindowState(self.windowState() & ~QtCore.Qt.WindowMinimized | QtCore.Qt.WindowActive)
+            else:
+                self.setWindowState(self.windowState() | QtCore.Qt.WindowActive)
+            # self.showNormal()
+            self.show()
+            self.raise_()
+            #保持在最前
+            if not self.is_top_hint:
+                # self.setWindowFlags(self.windowFlags() | QtCore.Qt.WindowStaysOnTopHint)
+                self.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint, True)
+                self.setVisible(True)
+                self.clearDirtyTopHintSignal.emit()
+
+    def clearDirtyTopHint(self):
+        # 上面方式貌似不不行, 需要置顶一下, 但又不想破坏置顶状态, 故, 立马取消置顶
+        if not self.is_top_hint:
+            time.sleep(0.1)
+            self.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint, False)
+            self.setVisible(True)
+
+
+            # def createCommandBar(self):
     #     self.commandBar = bar = CommandBar(self)
     #     bar.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
     #     addAction = Action(FIF.ADD, self.tr('Add'))
